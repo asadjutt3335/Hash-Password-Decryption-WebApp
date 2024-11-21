@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hash Password Decrypter</title>
+    <!-- Bootstrap CSS -->
+     <link rel="stylesheet" href="/static/css/bootstrap.min.css">
+    <!-- <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet"> -->
+    <style>
+        body {
+            background: linear-gradient(120deg, #f6d365, #fda085);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0;
+        }
+        .container {
+            margin-top: 50px;
+        }
+        .card {
+            border-radius: 15px;
+        }
+        #progress-bar {
+            height: 20px;
+            background: linear-gradient(90deg, #00c6ff, #0072ff);
+            transition: width 0.4s ease;
+            color: #ffffff;
+        }
+        #results {
+            margin-top: 20px;
+        }
+        .btn {
+            margin: 0 5px;
+        }
+        #error-message{
+            color: red;
+            font-size: 16px;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="row justify-content-center">
+            <div class="col-md-8">
+                <div class="card shadow-sm">
+                    <div class="card-body">
+                        <h1 class="text-center mb-4">Hash Password Decrypter</h1>
+                        <form id="decryption-form">
+                            <div class="form-group">
+                                <label for="hashes">Enter hashed passwords (comma-separated):</label>
+                                <input type="text" id="hashes" name="hashes" class="form-control" required>
+                                <div id="error-message"></div> <!-- Placeholder for hash error message -->
+                            </div>
+
+                            <div class="form-group">
+                                <label for="dictionary">Select dictionary file:</label>
+                                <input type="file" id="dictionary" name="dictionary" class="form-control-file" accept=".txt" required>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="algorithm">Select Hash Algorithm:</label>
+                                <select id="algorithm" name="algorithm" class="form-control" required>
+                                    <option value="md5">MD5</option>
+                                    <option value="sha1">SHA1</option>
+                                    <option value="sha256">SHA256</option>
+                                </select>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="salt">Enter salt (if any):</label>
+                                <input type="text" id="salt" name="salt" class="form-control">
+                            </div>
+
+                            <div class="text-center">
+                                <button type="button" class="btn btn-primary" onclick="startDecryption()">Start Decryption</button>
+                                <button type="button" class="btn btn-danger" id="cancel-button" onclick="cancelDecryption()">Cancel</button>
+                                <button type="button" class="btn btn-secondary" id="clear-results-button" onclick="clearResults()">Clear Results</button>
+                            </div>
+                        </form>
+
+                        <div class="progress mt-4">
+                            <div id="progress-bar" class="progress-bar" role="progressbar" style="width: 10%;">0%</div>
+                        </div>
+
+                        <div id="results" class="mt-4">
+                            <h5 class="text-center">Decryption Results:</h5>
+                            <p class="text-muted text-center">No results to display. Start a new decryption process.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS and dependencies -->
+    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.9.3/dist/umd/popper.min.js"></script>
+    <script src="/static/js/bootstrap.min.js"></script>
+
+    <script>
+        function startDecryption() {
+            clearResults();
+
+            const formData = new FormData();
+            formData.append('hashes', document.getElementById('hashes').value);
+            formData.append('dictionary', document.getElementById('dictionary').files[0]);
+            formData.append('algorithm', document.getElementById('algorithm').value);
+            formData.append('salt', document.getElementById('salt').value);
+
+            fetch(`/`, {
+                method: 'POST',
+                body: formData,
+                cache: 'no-store'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'started') {
+                    updateProgress();
+                } else if (data.status === 'error') {
+                    document.getElementById('error-message').innerText =  data.results;
+                }
+            })
+            .catch(error => console.error('Error during decryption:', error));
+        }
+
+        function updateProgress() {
+            fetch(`/progress`, { method: 'GET', cache: 'no-store' })
+                .then(response => response.json())
+                .then(data => {
+                    const progressBar = document.getElementById('progress-bar');
+                    progressBar.style.width = data.progress + '%';
+                    progressBar.textContent = data.progress + '%';
+
+                    if (data.progress < 100) {
+                        setTimeout(updateProgress, 1000);
+                    } else {
+                        fetchResults();
+                    }
+                })
+                .catch(error => console.error('Error fetching progress:', error));
+        }
+
+        function fetchResults() {
+            fetch(`/results`, { method: 'GET', cache: 'no-store' })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'completed') {
+                        document.getElementById('results').innerHTML = `<h5 class="text-center">Decryption Results:</h5>${data.results}`;
+                    }
+                })
+                .catch(error => console.error('Error fetching results:', error));
+        }
+
+        function cancelDecryption() {
+        fetch('/cancel', { method: 'POST' })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'cancelled') {
+                    document.getElementById('results').innerHTML = `<h5 class="text-center">Decryption Results:</h5><p class="text-danger text-center">Decryption Process Cancelled</p>`;
+                    clearProgressBar();
+                }
+            })
+            .catch(error => console.error('Error during cancellation:', error));
+    }
+
+        function clearResults() {
+            document.getElementById('results').innerHTML = `<h5 class="text-center">Decryption Results:</h5><p class="text-muted text-center">No results to display. Start a new decryption process.</p>`;
+            document.getElementById('progress-bar').style.width = '0%';
+            document.getElementById('progress-bar').textContent = '0%';
+        }
+
+        function clearErrorMessage() {
+            document.getElementById('error-message').innerText = '';
+        }
+
+
+        window.onload = function() {
+            clearResults();
+            clearErrorMessage();
+        };
+    </script>
+</body>
+</html>
